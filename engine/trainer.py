@@ -98,6 +98,7 @@ def do_train(
         num_query,
         start_epoch
 ):
+    #先把cfg中的参数导出
     log_period = cfg.SOLVER.LOG_PERIOD
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
     eval_period = cfg.SOLVER.EVAL_PERIOD
