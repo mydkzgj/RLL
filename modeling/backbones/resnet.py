@@ -130,9 +130,20 @@ class ResNet(nn.Module):
 
     def load_param(self, model_path):
         param_dict = torch.load(model_path)
+
+        #CJY at 2019.9.23  dict的key名称不匹配，需要去掉多余的“module”
+        from collections import OrderedDict
+        new_state_dict = OrderedDict()
+        for k, v in param_dict['state_dict'].items():
+            name = k[7:]  # 正好去除头7个字符 "module."
+            new_state_dict[name] = v
+        param_dict = new_state_dict
+
+        # 加载参数
         for i in param_dict:
             if 'fc' in i:
                 continue
+            sss = self.state_dict()
             self.state_dict()[i].copy_(param_dict[i])
 
     def random_init(self):

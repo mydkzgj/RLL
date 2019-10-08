@@ -14,10 +14,13 @@ from torch.backends import cudnn
 
 sys.path.append('.')
 from config import cfg
-from data import make_data_loader
-from engine.inference import inference
+#from data import make_data_loader
+from data import make_data_loader_classification
+from engine.evaluator import do_inference
 from modeling import build_model
 from utils.logger import setup_logger
+
+from layers import make_loss
 
 
 def main():
@@ -37,11 +40,11 @@ def main():
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 
-    output_dir = cfg.OUTPUT_DIR
+    output_dir = cfg.SOLVER.OUTPUT_DIR
     if output_dir and not os.path.exists(output_dir):
         mkdir(output_dir)
 
-    logger = setup_logger("reid_baseline", output_dir, 0)
+    logger = setup_logger("fundus_prediction", output_dir, 0)
     logger.info("Using {} GPUS".format(num_gpus))
     logger.info(args)
 
@@ -56,11 +59,15 @@ def main():
         os.environ['CUDA_VISIBLE_DEVICES'] = cfg.MODEL.DEVICE_ID
     cudnn.benchmark = True
 
-    train_loader, val_loader, num_query, num_classes = make_data_loader(cfg)
-    model = build_model(cfg, num_classes)
-    model.load_param(cfg.TEST.WEIGHT)
+    #build
+    train_loader, val_loader, test_loader, num_classes = make_data_loader_classification(cfg)
 
-    inference(cfg, model, val_loader, num_query)
+    model = build_model(cfg, num_classes)
+    model.load_param("Overall", cfg.TEST.WEIGHT)
+
+    loss_fn = make_loss(cfg, num_classes)  # modified by gu
+
+    do_inference(cfg, model, test_loader, num_classes, loss_fn)
 
 
 if __name__ == '__main__':

@@ -13,9 +13,56 @@ from yacs.config import CfgNode as CN
 # -----------------------------------------------------------------------------
 # Config definition
 # -----------------------------------------------------------------------------
-
 _C = CN()
 
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 1.Data General Setting. Can be replaced in respective sets
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+_C.DATA = CN()
+# -----------------------------------------------------------------------------
+# Data.Dataset
+# -----------------------------------------------------------------------------
+_C.DATA.DATASETS = CN()
+# List of the dataset names for training, as present in paths_catalog.py
+_C.DATA.DATASETS.NAMES = ('dukemtmc')
+# Root directory where datasets should be used (and downloaded if not found)
+_C.DATA.DATASETS.ROOT_DIR = ('./data')
+# -----------------------------------------------------------------------------
+# Data.DataLoader
+# -----------------------------------------------------------------------------
+_C.DATA.DATALOADER = CN()
+# Number of data loading threads
+_C.DATA.DATALOADER.NUM_WORKERS = 4
+# Sampler for data loading
+_C.DATA.DATALOADER.SAMPLER = 'softmax_rank'
+# Number of images per batch during test
+_C.DATA.DATALOADER.CATEGORIES_PER_BATCH = 6
+# Number of images per batch during test
+_C.DATA.DATALOADER.INSTANCES_PER_CATEGORY_IN_BATCH = 4
+
+_C.DATA.DATALOADER.IMS_PER_BATCH = _C.DATA.DATALOADER.CATEGORIES_PER_BATCH * _C.DATA.DATALOADER.INSTANCES_PER_CATEGORY_IN_BATCH
+# -----------------------------------------------------------------------------
+# Data.TRANSFORM
+# -----------------------------------------------------------------------------
+_C.DATA.TRANSFORM = CN()
+# Size of the image during training
+_C.DATA.TRANSFORM.SIZE = [384, 128]
+# Values to be used for image normalization
+_C.DATA.TRANSFORM.PIXEL_MEAN = [0.485, 0.456, 0.406]
+# Values to be used for image normalization
+_C.DATA.TRANSFORM.PIXEL_STD = [0.229, 0.224, 0.225]
+# Value of padding size
+_C.DATA.TRANSFORM.PADDING = 10
+
+
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 2.Model General Setting. Can be replaced in respective sets  Structure Information
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 _C.MODEL = CN()
 # Using cuda or cpu for training
 _C.MODEL.DEVICE = "cuda"
@@ -23,122 +70,179 @@ _C.MODEL.DEVICE = "cuda"
 _C.MODEL.DEVICE_ID = '0'
 # Name of backbone
 ###  se_resnext50 , se_resnet50 , resnet50 ,resnet34, mobilenetv3,resnet50_ibn_a,resnet50_ibn_a_old
-_C.MODEL.NAME = 'resnet50_ibn_a' 
-# Last stride of backbone
-_C.MODEL.LAST_STRIDE = 1
-# Path to pretrained model of backbone
-_C.MODEL.PRETRAIN_PATH = 'modeling/se_resnext50_32x4d-a260b3a4.pth'
-# Use ImageNet pretrained model to initialize backbone or use self trained model to initialize the whole model
-# Options: 'imagenet' or 'self'
-_C.MODEL.PRETRAIN_CHOICE = 'imagenet'
+_C.MODEL.NAME = 'resnet50_ibn_a'
 # If train with STN, options: 'yes' or 'no'
 _C.MODEL.STN = 'no'
+# Last stride of backbone
+_C.MODEL.LAST_STRIDE = 1
+
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 3.LOSS General Setting. Can be replaced in respective sets  Structure Information
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+#LOSS configuration
+_C.LOSS = CN()
 # The loss type of metric loss
 # options:'cranked_loss','ranked_loss',
-_C.MODEL.METRIC_LOSS_TYPE = 'ranked_loss'
-# If train with label smooth, options: 'on', 'off'
-_C.MODEL.IF_LABELSMOOTH = 'on'
+_C.LOSS.TYPE = 'ranked_loss'
+# Margin of ranked list loss
+_C.LOSS.MARGIN_RANK = 1.3  ### R = ALPHA - MARGIN_RANK
+_C.LOSS.ALPHA = 2.0
+_C.LOSS.TVAL = 1.0
+_C.LOSS.WEIGHT = 0.4       ### loss = softmax + w*ranked_loss
+
 
 # -----------------------------------------------------------------------------
-# INPUT
 # -----------------------------------------------------------------------------
-_C.INPUT = CN()
-# Size of the image during training
-_C.INPUT.SIZE_TRAIN = [384, 128]
-# Size of the image during test
-_C.INPUT.SIZE_TEST = [384, 128]
-# Random probability for image horizontal flip
-_C.INPUT.PROB = 0.5
-# Random probability for random erasing
-_C.INPUT.RE_PROB = 0.5
-# Values to be used for image normalization
-_C.INPUT.PIXEL_MEAN = [0.485, 0.456, 0.406]
-# Values to be used for image normalization
-_C.INPUT.PIXEL_STD = [0.229, 0.224, 0.225]
-# Value of padding size
-_C.INPUT.PADDING = 10
-
+# 4.Solver
 # -----------------------------------------------------------------------------
-# Dataset
 # -----------------------------------------------------------------------------
-_C.DATASETS = CN()
-# List of the dataset names for training, as present in paths_catalog.py
-_C.DATASETS.NAMES = ('dukemtmc')
-# Root directory where datasets should be used (and downloaded if not found)
-_C.DATASETS.ROOT_DIR = ('./data')
-
-# -----------------------------------------------------------------------------
-# DataLoader
-# -----------------------------------------------------------------------------
-_C.DATALOADER = CN()
-# Number of data loading threads
-_C.DATALOADER.NUM_WORKERS = 4
-# Sampler for data loading
-_C.DATALOADER.SAMPLER = 'softmax_rank'
-# Number of instance for one batch
-_C.DATALOADER.NUM_INSTANCE = 16
-
-# ---------------------------------------------------------------------------- #
-# Solver
-# ---------------------------------------------------------------------------- #
 _C.SOLVER = CN()
-# Name of optimizer
-_C.SOLVER.OPTIMIZER_NAME = "Adam"
 # Number of max epoches
 _C.SOLVER.MAX_EPOCHS = 50
-# Base learning rate
-_C.SOLVER.BASE_LR = 3e-4
-# Factor of learning bias
-_C.SOLVER.BIAS_LR_FACTOR = 2
-# Momentum
-_C.SOLVER.MOMENTUM = 0.9
-# Margin of ranked list loss 
-_C.SOLVER.MARGIN_RANK = 1.3  ### R = ALPHA - MARGIN_RANK
-_C.SOLVER.ALPHA = 2.0
-_C.SOLVER.TVAL = 1.0
-_C.SOLVER.WEIGHT = 0.4       ### loss = softmax + w*ranked_loss
-# Settings of weight decay
-_C.SOLVER.WEIGHT_DECAY = 0.0005
-_C.SOLVER.WEIGHT_DECAY_BIAS = 0.
-
-# decay rate of learning rate
-_C.SOLVER.GAMMA = 0.1
-# decay step of learning rate
-_C.SOLVER.STEPS = (30, 55)
-
-# warm up factor
-_C.SOLVER.WARMUP_FACTOR = 1.0 / 3
-# iterations of warm up
-_C.SOLVER.WARMUP_ITERS = 500
-# method of warm up, option: 'constant','linear'
-_C.SOLVER.WARMUP_METHOD = "linear"
-
+# epoch number of validation
+_C.SOLVER.EVAL_PERIOD = 50
 # epoch number of saving checkpoints
 _C.SOLVER.CHECKPOINT_PERIOD = 50
 # iteration of display training log
 _C.SOLVER.LOG_PERIOD = 100
-# epoch number of validation
-_C.SOLVER.EVAL_PERIOD = 50
+# Path to checkpoint and saved log of trained model
+_C.SOLVER.OUTPUT_DIR = "work_space"
+# -----------------------------------------------------------------------------
+# OPTIMIZER configuration
+# -----------------------------------------------------------------------------
+_C.SOLVER.OPTIMIZER = CN()
+# Name of optimizer
+_C.SOLVER.OPTIMIZER.NAME = "Adam"
+# Momentum
+_C.SOLVER.OPTIMIZER.MOMENTUM = 0.9
+# Settings of weight decay
+_C.SOLVER.OPTIMIZER.WEIGHT_DECAY = 0.0005
+_C.SOLVER.OPTIMIZER.WEIGHT_DECAY_BIAS = 0.
+# -----------------------------------------------------------------------------
+# SCHEDULER configuration
+# -----------------------------------------------------------------------------
+_C.SOLVER.SCHEDULER = CN()
+# Base learning rate
+_C.SOLVER.SCHEDULER.BASE_LR = 3e-4
+# Factor of learning bias
+_C.SOLVER.SCHEDULER.BIAS_LR_FACTOR = 2
+# decay rate of learning rate
+_C.SOLVER.SCHEDULER.GAMMA = 0.1
+# decay step of learning rate
+_C.SOLVER.SCHEDULER.STEPS = (30, 55)
+# warm up factor
+_C.SOLVER.SCHEDULER.WARMUP_FACTOR = 1.0 / 3
+# iterations of warm up
+_C.SOLVER.SCHEDULER.WARMUP_ITERS = 500
+# method of warm up, option: 'constant','linear'
+_C.SOLVER.SCHEDULER.WARMUP_METHOD = "linear"
+# if train from the head
+_C.SOLVER.SCHEDULER.RETRAIN_FROM_HEAD = 1
 
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Specific Setting - Train Configuration
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+_C.TRAIN = CN()
+# If test with re-ranking, options: 'yes','no'
+_C.TRAIN.RE_RANKING = 'no'
+# Path to trained model
+_C.TRAIN.WEIGHT = ""
+# Whether feature is nomalized before test, if yes, it is equivalent to cosine distance
+_C.TRAIN.FEAT_NORM = 'yes'
+# -----------------------------------------------------------------------------
+# Train Transform
+# -----------------------------------------------------------------------------
+_C.TRAIN.TRANSFORM = CN()
+# Random probability for image horizontal flip
+_C.TRAIN.TRANSFORM.PROB = 0.5
+# Random probability for random erasing
+_C.TRAIN.TRANSFORM.RE_PROB = 0.5
+# -----------------------------------------------------------------------------
+# Train Dataloader
+# -----------------------------------------------------------------------------
+_C.TRAIN.DATALOADER = CN()
+# Number of categories per batch
+_C.TRAIN.DATALOADER.CATEGORIES_PER_BATCH = 6
+# Number of images per category in a batch
+_C.TRAIN.DATALOADER.INSTANCES_PER_CATEGORY_IN_BATCH = 4
 # Number of images per batch
-# This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
-# see 2 images per batch
-_C.SOLVER.IMS_PER_BATCH = 64
+_C.TRAIN.DATALOADER.IMS_PER_BATCH = _C.TRAIN.DATALOADER.CATEGORIES_PER_BATCH * _C.TRAIN.DATALOADER.INSTANCES_PER_CATEGORY_IN_BATCH
+# -----------------------------------------------------------------------------
+# Train Trick
+# -----------------------------------------------------------------------------
+_C.TRAIN.TRICK = CN()
+# Path to pretrained model of backbone
+_C.TRAIN.TRICK.PRETRAIN_PATH = r'C:\Users\admin\.cache\torch\checkpoints\resnet50-19c8e357.pth'##'modeling/se_resnext50_32x4d-a260b3a4.pth'
+# If train with label smooth, options: 'on', 'off'
+_C.TRAIN.TRICK.IF_LABELSMOOTH = 'on'
 
-# This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
-# see 2 images per batch
+
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Specific Setting - Val Configuration
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+_C.VAL = CN()
+# If test with re-ranking, options: 'yes','no'
+_C.VAL.RE_RANKING = 'no'
+# Path to trained model
+_C.VAL.WEIGHT = ""
+# Whether feature is nomalized before test, if yes, it is equivalent to cosine distance
+_C.VAL.FEAT_NORM = 'yes'
+# -----------------------------------------------------------------------------
+# Val Transform
+# -----------------------------------------------------------------------------
+#_C.VAL.TRANSFORM = CN()
+# Random probability for image horizontal flip
+#_C.VAL.TRANSFORM.PROB = 0.5
+# Random probability for random erasing
+#_C.VAL.TRANSFORM.RE_PROB = 0.5
+# -----------------------------------------------------------------------------
+# Val Dataloader
+# -----------------------------------------------------------------------------
+_C.VAL.DATALOADER = CN()
+# Number of categories per batch
+_C.VAL.DATALOADER.CATEGORIES_PER_BATCH = 6
+# Number of images per category in a batch
+_C.VAL.DATALOADER.INSTANCES_PER_CATEGORY_IN_BATCH = 4
+# Number of images per batch
+_C.VAL.DATALOADER.IMS_PER_BATCH = _C.TRAIN.DATALOADER.CATEGORIES_PER_BATCH * _C.TRAIN.DATALOADER.INSTANCES_PER_CATEGORY_IN_BATCH
+
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Specific Setting - Test Configuration
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 _C.TEST = CN()
-# Number of images per batch during test
-_C.TEST.IMS_PER_BATCH = 128
 # If test with re-ranking, options: 'yes','no'
 _C.TEST.RE_RANKING = 'no'
 # Path to trained model
 _C.TEST.WEIGHT = ""
 # Whether feature is nomalized before test, if yes, it is equivalent to cosine distance
 _C.TEST.FEAT_NORM = 'yes'
-
-# ---------------------------------------------------------------------------- #
-# Misc options
-# ---------------------------------------------------------------------------- #
-# Path to checkpoint and saved log of trained model
-_C.OUTPUT_DIR = "work_space"
+# -----------------------------------------------------------------------------
+# Test Transform
+# -----------------------------------------------------------------------------
+#_C.TEST.TRANSFORM = CN()
+# Random probability for image horizontal flip
+#_C.TEST.TRANSFORM.PROB = 0.5
+# Random probability for random erasing
+#_C.TEST.TRANSFORM.RE_PROB = 0.5
+# -----------------------------------------------------------------------------
+# Test Dataloader
+# -----------------------------------------------------------------------------
+_C.TEST.DATALOADER = CN()
+# Number of categories per batch
+_C.TEST.DATALOADER.CATEGORIES_PER_BATCH = 6
+# Number of images per category in a batch
+_C.TEST.DATALOADER.INSTANCES_PER_CATEGORY_IN_BATCH = 4
+# Number of images per batch
+_C.TEST.DATALOADER.IMS_PER_BATCH = _C.TEST.DATALOADER.CATEGORIES_PER_BATCH * _C.TEST.DATALOADER.INSTANCES_PER_CATEGORY_IN_BATCH

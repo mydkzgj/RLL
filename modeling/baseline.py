@@ -38,34 +38,34 @@ def weights_init_classifier(m):
 class Baseline(nn.Module):
     in_planes = 2048
 
-    def __init__(self, num_classes, last_stride, model_path, stn_flag, model_name, pretrain_choice):
+    def __init__(self,  base_name, num_classes, stn_flag, last_stride):
         super(Baseline, self).__init__()
 
-        self.model_name = model_name
-        
-        if model_name == 'resnet18':
+        self.base_name = base_name
+
+        if base_name == 'resnet18':
             self.in_planes = 512
             self.base = ResNet(last_stride=last_stride, 
                                block=BasicBlock, 
                                layers=[2, 2, 2, 2])
-        elif model_name == 'resnet34':
+        elif base_name == 'resnet34':
             self.in_planes = 512
             self.base = ResNet(last_stride=last_stride,
                                block=BasicBlock,
                                layers=[3, 4, 6, 3])
-        elif model_name == 'resnet50':
+        elif base_name == 'resnet50':
             self.base = ResNet(last_stride=last_stride,
                                block=Bottleneck,
                                layers=[3, 4, 6, 3])
-        elif model_name == 'resnet101':
+        elif base_name == 'resnet101':
             self.base = ResNet(last_stride=last_stride,
                                block=Bottleneck, 
                                layers=[3, 4, 23, 3])
-        elif model_name == 'resnet152':
+        elif base_name == 'resnet152':
             self.base = ResNet(last_stride=last_stride, 
                                block=Bottleneck,
                                layers=[3, 8, 36, 3])
-        elif model_name == 'se_resnet50':
+        elif base_name == 'se_resnet50':
             self.base = SENet(block=SEResNetBottleneck, 
                               layers=[3, 4, 6, 3], 
                               groups=1, 
@@ -76,7 +76,7 @@ class Baseline(nn.Module):
                               downsample_kernel_size=1, 
                               downsample_padding=0,
                               last_stride=last_stride) 
-        elif model_name == 'se_resnet101':
+        elif base_name == 'se_resnet101':
             self.base = SENet(block=SEResNetBottleneck, 
                               layers=[3, 4, 23, 3], 
                               groups=1, 
@@ -87,7 +87,7 @@ class Baseline(nn.Module):
                               downsample_kernel_size=1, 
                               downsample_padding=0,
                               last_stride=last_stride)
-        elif model_name == 'se_resnet152':
+        elif base_name == 'se_resnet152':
             self.base = SENet(block=SEResNetBottleneck, 
                               layers=[3, 8, 36, 3],
                               groups=1, 
@@ -98,7 +98,7 @@ class Baseline(nn.Module):
                               downsample_kernel_size=1, 
                               downsample_padding=0,
                               last_stride=last_stride)  
-        elif model_name == 'se_resnext50':
+        elif base_name == 'se_resnext50':
             self.base = SENet(block=SEResNeXtBottleneck,
                               layers=[3, 4, 6, 3], 
                               groups=32, 
@@ -109,7 +109,7 @@ class Baseline(nn.Module):
                               downsample_kernel_size=1, 
                               downsample_padding=0,
                               last_stride=last_stride) 
-        elif model_name == 'se_resnext101':
+        elif base_name == 'se_resnext101':
             self.base = SENet(block=SEResNeXtBottleneck,
                               layers=[3, 4, 23, 3], 
                               groups=32, 
@@ -120,7 +120,7 @@ class Baseline(nn.Module):
                               downsample_kernel_size=1, 
                               downsample_padding=0,
                               last_stride=last_stride)
-        elif model_name == 'senet154':
+        elif base_name == 'senet154':
             self.base = SENet(block=SEBottleneck, 
                               layers=[3, 8, 36, 3],
                               groups=64, 
@@ -128,19 +128,15 @@ class Baseline(nn.Module):
                               dropout_p=0.2, 
                               last_stride=last_stride)
                               
-        elif model_name == 'mobilenetv3':
+        elif base_name == 'mobilenetv3':
             self.in_planes = 960
             self.base = MobileNetV3_Large()
 
-        elif model_name == 'resnet50_ibn_a':
+        elif base_name == 'resnet50_ibn_a':
             self.base = resnet50_ibn_a(last_stride = last_stride)
 
-        elif model_name == 'resnet50_ibn_a_old':
+        elif base_name == 'resnet50_ibn_a_old':
             self.base = resnet50_ibn_a_old(last_stride = last_stride)
-
-        if pretrain_choice == 'imagenet':
-            self.base.load_param(model_path)
-            print('Loading pretrained ImageNet model......')
 
         # Spatial transformer localization-network
         self.localization = nn.Sequential(
@@ -196,15 +192,28 @@ class Baseline(nn.Module):
 
         feat = self.bottleneck(global_feat)  # normalize for angular softmax
 
-        if self.training:
-            cls_score = self.classifier(feat)
-            return cls_score, feat ### feat for ranked loss
-        else:
-            return feat
+        # CJY at 2019.10.8 去掉if self.training:,因为我们最终需要的模型就是classifier
+        cls_score = self.classifier(feat)
+        return cls_score, feat ### feat for ranked loss   #实际上我们是否可以引出很多feat
 
-    def load_param(self, trained_path):
-        param_dict = torch.load(trained_path)
-        for i in param_dict:
-            if i not in self.state_dict() or 'classifier' in i:
-                continue
-            self.state_dict()[i].copy_(param_dict[i])
+
+    def load_param(self, loadChoice, model_path):
+        param_dict = torch.load(model_path)
+
+        if loadChoice == "Base":
+            for i in param_dict:
+                if i not in self.base.state_dict():  #注意，我们是需要classifier层参数的
+                    continue
+                self.base.state_dict()[i].copy_(param_dict[i])
+
+        elif loadChoice == "Overall":   #CJY at 2019.10.4
+            for i in param_dict:
+                if i not in self.state_dict(): #or 'classifier' in i:  #注意，我们是需要classifier层参数的
+                    continue
+                self.state_dict()[i].copy_(param_dict[i])
+
+        elif loadChoice == "Classifier":   #CJY at 2019.10.4
+            for i in param_dict:
+                if i not in self.classifier.state_dict(): #or 'classifier' in i:  #注意，我们是需要classifier层参数的
+                    continue
+                self.classifier.state_dict()[i].copy_(param_dict[i])

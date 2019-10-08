@@ -173,12 +173,24 @@ class ResNet(nn.Module):
         
     def load_param(self, model_path):
         model_weight = torch.load(model_path)
-        param_dict = model_weight['state_dict']
+        #CJY at 2019.10.4
+        if model_weight.get("state_dict") != None:
+            param_dict = model_weight['state_dict']
+        else:
+            param_dict = model_weight
         new_state_dict = OrderedDict()
-        
+
+        a = self.state_dict()
+
         for k, v in param_dict.items():
-            name = k[7:] # remove `module.`
-            new_state_dict[name] = v
+            if "module." in k:
+                name = k[7:] # remove `module.`
+                new_state_dict[name] = v
+            elif "base." in k:
+                name = k[5:]  # remove `module.`
+                new_state_dict[name] = v
+            else:
+                continue
             
         for i in new_state_dict:
             if 'fc' in i:

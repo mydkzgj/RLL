@@ -10,15 +10,21 @@ import torch
 import torch.nn as nn
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint, Timer
-from ignite.metrics import RunningAverage
 
-from utils.reid_metric import R1_mAP
+from ignite.metrics import RunningAverage
+from ignite.metrics import Accuracy
+from ignite.metrics import Precision
+
+from engine.evaluator import do_inference
+
+
+#CJY at 2019.9.24 既然这里面定义的与inference.py 中的一样能不能直接引用
+#还没加
 
 global ITER
 ITER = 0
 
-def create_supervised_trainer(model, optimizer, loss_fn,
-                              device=None):
+def create_supervised_trainer(model, optimizer, metrics, loss_fn, device=None):
     """
     Factory function for creating a trainer for supervised models
 
@@ -37,49 +43,27 @@ def create_supervised_trainer(model, optimizer, loss_fn,
             model = nn.DataParallel(model)
         model.to(device)
 
+        #optimizer加载进来的是cpu类型，需要手动转成gpu。
+        for state in optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.cuda()
+
     def _update(engine, batch):
         model.train()
         optimizer.zero_grad()
-        img, target = batch
-        img = img.to(device) if torch.cuda.device_count() >= 1 else img
-        target = target.to(device) if torch.cuda.device_count() >= 1 else target
-        score, feat = model(img)
-        loss = loss_fn(score, feat, target)
+        imgs, labels = batch   #这个格式应该跟collate_fn的处理方式对应
+        imgs = imgs.to(device) if torch.cuda.device_count() >= 1 else imgs
+        labels = labels.to(device) if torch.cuda.device_count() >= 1 else labels
+        scores, feats = model(imgs)
+        loss = loss_fn(scores, feats, labels)
         loss.backward()
         optimizer.step()
         # compute acc
-        acc = (score.max(1)[1] == target).float().mean()
-        return loss.item(), acc.item()
+        #acc = (scores.max(1)[1] == labels).float().mean()
+        return {"scores":scores, "labels":labels, "loss":loss.item()}
 
-    return Engine(_update)
-
-def create_supervised_evaluator(model, metrics,
-                                device=None):
-    """
-    Factory function for creating an evaluator for supervised models
-
-    Args:
-        model (`torch.nn.Module`): the model to train
-        metrics (dict of str - :class:`ignite.metrics.Metric`): a map of metric names to Metrics
-        device (str, optional): device type specification (default: None).
-            Applies to both model and batches.
-    Returns:
-        Engine: an evaluator engine with supervised inference function
-    """
-    if device:
-        if torch.cuda.device_count() > 1:
-            model = nn.DataParallel(model)
-        model.to(device)
-
-    def _inference(engine, batch):
-        model.eval()
-        with torch.no_grad():
-            data, pids, camids = batch
-            data = data.to(device) if torch.cuda.device_count() >= 1 else data
-            feat = model(data)
-            return feat, pids, camids
-
-    engine = Engine(_inference)
+    engine = Engine(_update)
 
     for name, metric in metrics.items():
         metric.attach(engine, name)
@@ -92,39 +76,60 @@ def do_train(
         model,
         train_loader,
         val_loader,
+        num_classes,
         optimizer,
         scheduler,
         loss_fn,
-        num_query,
         start_epoch
 ):
-    #先把cfg中的参数导出
+    #1.先把cfg中的参数导出
+    epochs = cfg.SOLVER.MAX_EPOCHS
     log_period = cfg.SOLVER.LOG_PERIOD
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
     eval_period = cfg.SOLVER.EVAL_PERIOD
-    output_dir = cfg.OUTPUT_DIR
+    output_dir = cfg.SOLVER.OUTPUT_DIR
     device = cfg.MODEL.DEVICE
-    epochs = cfg.SOLVER.MAX_EPOCHS
 
-    logger = logging.getLogger("reid_baseline.train")
+
+    #2.构建模块
+    logger = logging.getLogger("fundus_prediction.train")
     logger.info("Start training")
-    trainer = create_supervised_trainer(model, optimizer, loss_fn, device=device)
-    evaluator = create_supervised_evaluator(model, metrics={'r1_mAP': R1_mAP(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM)}, device=device)
+    """"
+    metrics_train = {"avg_loss":  RunningAverage(output_transform=lambda x: x["loss"]),
+                    "avg_precision": RunningAverage(output_transform=lambda x: x["precision"]),
+                    "avg_accuracy": RunningAverage(output_transform=lambda x: x["accuracy"])}
+    """
+    metrics_train = {"avg_loss": RunningAverage(output_transform=lambda x: x["loss"]),
+                     "avg_precision": RunningAverage(Precision(output_transform=lambda x: (x["scores"], x["labels"]))),
+                     "avg_accuracy": RunningAverage(Accuracy(output_transform=lambda x: (x["scores"], x["labels"])))}  #由于训练集样本均衡后远离原始样本集，故只采用平均metric
+    trainer = create_supervised_trainer(model, optimizer, metrics_train, loss_fn, device=device)
+
+    #CJY  at 2019.9.26
+    def output_transform(output):
+        # `output` variable is returned by above `process_function`
+        y_pred = output['scores']
+        y = output['labels']
+        return y_pred, y  # output format is according to `Accuracy` docs
+
+    metrics_eval = {"overall_accuracy": Accuracy(output_transform=output_transform),
+                    "precision": Precision(output_transform=output_transform)}
+
     checkpointer = ModelCheckpoint(output_dir, cfg.MODEL.NAME, checkpoint_period, n_saved=10, require_empty=False)
     timer = Timer(average=True)
 
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpointer, {'model': model.state_dict(),
-                                                                     'optimizer': optimizer.state_dict()})
+    #3.将模块与engine联系起来attach
+    #CJY at 2019.9.23
+    trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpointer, {'model': model,
+                                                                     'optimizer': optimizer})
     timer.attach(trainer, start=Events.EPOCH_STARTED, resume=Events.ITERATION_STARTED,
                  pause=Events.ITERATION_COMPLETED, step=Events.ITERATION_COMPLETED)
 
-    # average metric to attach on trainer
-    RunningAverage(output_transform=lambda x: x[0]).attach(trainer, 'avg_loss')
-    RunningAverage(output_transform=lambda x: x[1]).attach(trainer, 'avg_acc')
 
+    #4.事件处理函数
     @trainer.on(Events.STARTED)
     def start_training(engine):
         engine.state.epoch = start_epoch
+        do_inference(cfg, model, val_loader, num_classes, loss_fn)
 
     @trainer.on(Events.EPOCH_STARTED)
     def adjust_learning_rate(engine):
@@ -136,9 +141,12 @@ def do_train(
         ITER += 1
 
         if ITER % log_period == 0:
-            logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}"
+            avg_precision = engine.state.metrics['avg_precision'].numpy().tolist()
+            for index, ap in enumerate(avg_precision):
+                avg_precision[index] = float("{:.2f}".format(ap))
+            logger.info("Epoch[{}] Iteration[{}/{}] Avg_Loss: {:.3f}, Avg_Pre: {}, Avg_Acc: {:.3f}, Base Lr: {:.2e}"
                         .format(engine.state.epoch, ITER, len(train_loader),
-                                engine.state.metrics['avg_loss'], engine.state.metrics['avg_acc'],
+                                engine.state.metrics['avg_loss'], avg_precision, engine.state.metrics['avg_accuracy'],
                                 scheduler.get_lr()[0]))
         if len(train_loader) == ITER:
             ITER = 0
@@ -155,12 +163,23 @@ def do_train(
     @trainer.on(Events.EPOCH_COMPLETED)
     def log_validation_results(engine):
         if engine.state.epoch % eval_period == 0:
-            evaluator.run(val_loader)
-            cmc, mAP = evaluator.state.metrics['r1_mAP']
-            logger.info("Validation Results - Epoch: {}".format(engine.state.epoch))
-            logger.info("mAP: {:.1%}".format(mAP))
-            for r in [1, 5, 10]:
-                logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
+            do_inference(cfg, model, val_loader, num_classes, loss_fn)
 
+            """
+            evaluator.run(val_loader)
+            precision = evaluator.state.metrics['precision'].numpy().tolist()
+            avg_accuracy = 0
+            for index, ap in enumerate(precision):
+                avg_accuracy = avg_accuracy + ap
+                precision[index] = float("{:.2f}".format(ap))
+            avg_accuracy = avg_accuracy / len(precision)
+            overall_accuracy = evaluator.state.metrics['overall_accuracy']
+            logger.info("Validation Results - Epoch: {}".format(engine.state.epoch))
+            logger.info("Precision: {} Average_Accuracy: {:.2f}".format(precision, avg_accuracy))
+            logger.info("Overall_Accuracy: {:.3f}".format(overall_accuracy))
+            """
+
+    #5.engine运行
     trainer.run(train_loader, max_epochs=epochs)
+
 
