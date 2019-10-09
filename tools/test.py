@@ -67,7 +67,7 @@ def main():
 
     loss_fn = make_loss(cfg, num_classes)  # modified by gu
 
-    do_inference(cfg, model, test_loader, num_classes, loss_fn)
+    do_inference(cfg, model, test_loader, num_classes, loss_fn, plotROC=True)
 
 
 if __name__ == '__main__':
