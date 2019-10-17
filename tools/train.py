@@ -17,8 +17,12 @@ from data import make_data_loader
 from data import make_data_loader_classification
 from engine.trainer import do_train
 from modeling import build_model
-from layers import make_loss
-from solver import make_optimizer, WarmupMultiStepLR
+#from layers import make_loss
+from loss import make_G_loss
+from loss import make_D_loss
+
+from solver import make_optimizer, WarmupMultiStepLR, make_optimizers
+
 
 from utils.logger import setup_logger
 
@@ -27,33 +31,53 @@ def train(cfg):
     # prepare dataset
     #train_loader, val_loader, num_query, num_classes = make_data_loader(cfg)
     #CJY at 2019.9.26  利用重新编写的函数处理同仁数据
-    train_loader, val_loader, test_loader, num_classes = make_data_loader_classification(cfg)
+    train_loader, val_loader, test_loader, classes_list = make_data_loader_classification(cfg)
+    num_classes = len(classes_list)
 
     # build model and load parameter
     model = build_model(cfg, num_classes)
-    model.load_param("Overall", cfg.TRAIN.TRICK.PRETRAIN_PATH)
-    print(model)
+    model.load_param("Base", cfg.TRAIN.TRICK.PRETRAIN_PATH)
+    #print(model)
 
     # loss function
-    loss_func = make_loss(cfg, num_classes)     # modified by gu
-    print('Train with the loss type is', cfg.LOSS.TYPE)
+    #loss_func = make_loss(cfg, num_classes)  # modified by gu
+    g_loss_func = make_G_loss(cfg, num_classes)
+    d_loss_func = make_D_loss(cfg, num_classes)
+    loss_funcs = {}
+    loss_funcs["G"] = g_loss_func
+    loss_funcs["D"] = d_loss_func
+    print('Train with the loss type is', "softmax + common") #cfg.LOSS.TYPE)
 
     # build optimizer
-    optimizer = make_optimizer(cfg, model)
+    #optimizer = make_optimizer(cfg, model)
+    optimizers = make_optimizers(cfg, model)
     print('Train with the optimizer type is', cfg.SOLVER.OPTIMIZER.NAME)
 
     # build scheduler （断点续传功能暂时有问题）
     if cfg.SOLVER.SCHEDULER.RETRAIN_FROM_HEAD == True:
         start_epoch = 0
-        scheduler = WarmupMultiStepLR(optimizer, cfg.SOLVER.SCHEDULER.STEPS, cfg.SOLVER.SCHEDULER.GAMMA,
+        op_epochs = 10
+        schedulers = []
+        for epoch_index in range(op_epochs):
+            op_schedulers = []
+            for i in range(len(optimizers)):
+                op_i_scheduler = WarmupMultiStepLR(optimizers[i], cfg.SOLVER.SCHEDULER.STEPS, cfg.SOLVER.SCHEDULER.GAMMA,
                                       cfg.SOLVER.SCHEDULER.WARMUP_FACTOR,
                                       cfg.SOLVER.SCHEDULER.WARMUP_ITERS, cfg.SOLVER.SCHEDULER.WARMUP_METHOD)
+                op_schedulers.append(op_i_scheduler)
+            schedulers.append(op_schedulers)
+
     else:
         start_epoch = eval(cfg.TRAIN.TRICK.PRETRAIN_PATH.split('/')[-1].split('.')[0].split('_')[-1])
-        scheduler = WarmupMultiStepLR(optimizer, cfg.SOLVER.SCHEDULER.STEPS, cfg.SOLVER.SCHEDULER.GAMMA,
+        scheduler1 = WarmupMultiStepLR(optimizers[0], cfg.SOLVER.SCHEDULER.STEPS, cfg.SOLVER.SCHEDULER.GAMMA,
                                       cfg.SOLVER.SCHEDULER.WARMUP_FACTOR,
                                       cfg.SOLVER.SCHEDULER.WARMUP_ITERS, cfg.SOLVER.SCHEDULER.WARMUP_METHOD,
                                       start_epoch)   # KeyError: "param 'initial_lr' is not specified in param_groups[0] when resuming an optimizer"
+        scheduler2 = WarmupMultiStepLR(optimizers[1], cfg.SOLVER.SCHEDULER.STEPS, cfg.SOLVER.SCHEDULER.GAMMA,
+                                      cfg.SOLVER.SCHEDULER.WARMUP_FACTOR,
+                                      cfg.SOLVER.SCHEDULER.WARMUP_ITERS, cfg.SOLVER.SCHEDULER.WARMUP_METHOD,
+                                      start_epoch)  # KeyError: "param 'initial_lr' is not specified in param_groups[0] when resuming an optimizer"
+
 
 
     do_train(
@@ -61,10 +85,10 @@ def train(cfg):
         model,
         train_loader,
         val_loader,
-        num_classes,
-        optimizer,
-        scheduler,      # modify for using self trained model
-        loss_func,
+        classes_list,
+        optimizers,
+        schedulers,      # modify for using self trained model
+        loss_funcs,
         start_epoch     # add for using self trained model
     )
 

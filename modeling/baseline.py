@@ -138,6 +138,7 @@ class Baseline(nn.Module):
         elif base_name == 'resnet50_ibn_a_old':
             self.base = resnet50_ibn_a_old(last_stride = last_stride)
 
+        # 2.以下是stn的网络结构
         # Spatial transformer localization-network
         self.localization = nn.Sequential(
             nn.Conv2d(3, 8, kernel_size=7),
@@ -158,7 +159,7 @@ class Baseline(nn.Module):
         self.fc_loc[2].weight.data.zero_()
         self.fc_loc[2].bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
 
-
+        # 3.以下是classifier的网络结构
         self.gap = nn.AdaptiveAvgPool2d(1)
         # self.gap = nn.AdaptiveMaxPool2d(1)
         self.num_classes = num_classes
@@ -170,6 +171,33 @@ class Baseline(nn.Module):
 
         self.bottleneck.apply(weights_init_kaiming)
         self.classifier.apply(weights_init_classifier)
+
+        #
+        self.scroe_by_class = torch.nn.Sigmoid()
+
+        # 4.自建，图像为同类或异类的判别器
+        """
+        self.similarity_classifier = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=(2,1)),
+            nn.ReLU(True),
+            nn.Conv2d(8, 1, kernel_size=1),
+            nn.ReLU(True),
+            nn.Flatten(),
+            nn.Linear(self.in_planes, 1, bias=False),   #有两排
+            #nn.ReLU(True),
+            #nn.Linear(32, 1, bias=False),
+            nn.Sigmoid()
+        )
+        self.similarity_classifier[5].apply(weights_init_classifier)
+        """
+        self.s_conv1 = nn.Conv2d(1, 8, kernel_size=(2,1))
+        self.s_relu1 = nn.ReLU(True)
+        self.s_conv2 = nn.Conv2d(8, 1, kernel_size=1)
+        self.s_relu2 = nn.ReLU(True)
+        self.s_flat = nn.Flatten()
+        self.s_classifier = nn.Linear(self.in_planes, 1)#, bias=False)
+        self.s_s = nn.Sigmoid()
+
         
     # Spatial transformer network forward function
     def stn(self, x):
@@ -188,13 +216,48 @@ class Baseline(nn.Module):
             x = self.stn(x)    #### stn
 
         global_feat = self.gap(self.base(x))  # (b, 2048, 1, 1)
+
         global_feat = global_feat.view(global_feat.shape[0], -1)  # flatten to (bs, 2048)
 
         feat = self.bottleneck(global_feat)  # normalize for angular softmax
 
         # CJY at 2019.10.8 去掉if self.training:,因为我们最终需要的模型就是classifier
         cls_score = self.classifier(feat)
-        return cls_score, feat ### feat for ranked loss   #实际上我们是否可以引出很多feat
+
+        #cls_score_sig = self.scroe_by_class(cls_score)
+
+
+
+        #CJY at 2019.10.15
+        pairwise_global_feat = global_feat.view((global_feat.shape[0]//2, 1, -1, global_feat.shape[1]))
+        #pairwise_global_feat = global_feat.view(global_feat.shape[0]//2, -1)
+        """
+        index1 = torch.arange(0, global_feat.shape[0], 2).cuda()
+        global_feat1 = torch.index_select(global_feat, 0, index1, out=None)
+        index2 = torch.arange(1, global_feat.shape[0], 2).cuda()
+        global_feat2 = torch.index_select(global_feat, 0, index2, out=None)
+
+        #if global_feat1.shape[0] != global_feat2.shape[0]:
+        #    raise Exception("batch size isn't even")
+        pairwise_global_feat = torch.abs(torch.add(global_feat1, -1, global_feat2))
+        #"""
+
+        similarity = self.similarity_classifier(pairwise_global_feat)
+        #"""
+        sc1 = self.s_conv1(pairwise_global_feat)
+        sr1 = self.s_relu1(sc1)
+        sc2 = self.s_conv2(sr1)
+        sr2 = self.s_relu2(sc2)
+        sf = self.s_flat(sr2)
+        scl = self.s_classifier(sf)
+        similarity = self.s_s(scl)
+        
+
+        sss = {"global_feat": global_feat, "pairwise_global_feat":pairwise_global_feat, "sc1":sc1, "sr1":sc1, "sc2":sc2, "sr2":sc2, "sf":sf, "scl":scl}
+        #"""
+
+
+        return feat, cls_score, similarity, sss ### feat for ranked loss   #实际上我们是否可以引出很多feat
 
 
     def load_param(self, loadChoice, model_path):

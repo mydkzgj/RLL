@@ -4,4 +4,4 @@
 @contact: sherlockliao01@gmail.com
 """
 
-from .triplet_sampler import RandomIdentitySampler, RandomSampler, RandomSampler_NonTrain, RandomIdentitySampler_alignedreid   # new add by gu
+from .triplet_sampler import RandomIdentitySampler, RandomSampler, RandomIdentitySampler_alignedreid   # new add by gu

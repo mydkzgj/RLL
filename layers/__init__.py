@@ -26,10 +26,12 @@ def make_loss(cfg, num_classes):
             return F.cross_entropy(score, target)
     elif cfg.DATA.DATALOADER.SAMPLER == 'ranked_loss':
         def loss_func(score, feat, target):
-            return ranked_loss(feat, target)[0] 
+            #return ranked_loss(feat, target)[0]
+            return ranked_loss(feat, target)
     elif cfg.DATA.DATALOADER.SAMPLER == 'cranked_loss':
         def loss_func(score, feat, target):
-            return cranked_loss(feat, target)[0] 
+            #return cranked_loss(feat, target)[0]
+            return cranked_loss(feat, target)
     elif cfg.DATA.DATALOADER.SAMPLER == 'softmax_rank':
         def loss_func(score, feat, target):
             if cfg.LOSS.TYPE == 'ranked_loss':

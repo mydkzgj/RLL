@@ -12,7 +12,7 @@ from torchvision.datasets import ImageFolder
 from .collate_batch import train_collate_fn, val_collate_fn
 from .collate_batch import train_collate_fn_classifaction, val_collate_fn_classifaction, test_collate_fn_classifaction
 from .datasets import init_dataset, ImageDataset, ImageDatasetForClassification
-from .samplers import RandomIdentitySampler, RandomSampler, RandomSampler_NonTrain, RandomIdentitySampler_alignedreid  # New add by gu
+from .samplers import RandomIdentitySampler, RandomSampler, RandomIdentitySampler_alignedreid  # New add by gu
 from .transforms import build_transforms
 
 
@@ -60,16 +60,31 @@ def make_data_loader_classification(cfg):
         # TODO: add multi dataset to train
         dataset = init_dataset(cfg.DATA.DATASETS.NAMES, root=cfg.DATA.DATASETS.ROOT_DIR)
 
+
     num_classes = dataset.num_categories
+    # 建立classes_list
+    classes_list = dataset.category
+
+
 
     #train set
     #是否要进行label-smoothing
     #train_set = ImageDataset(dataset.train, train_transforms)
     train_set = ImageDatasetForClassification(dataset.train, train_transforms)
     if cfg.DATA.DATALOADER.SAMPLER == 'softmax':
+        """
         train_loader = DataLoader(
             train_set, batch_size=cfg.TRAIN.DATALOADER.IMS_PER_BATCH, shuffle=True, num_workers=num_workers,
             collate_fn=train_collate_fn_classifaction
+        )
+        """
+        train_loader = DataLoader(
+            train_set, batch_size=cfg.TRAIN.DATALOADER.IMS_PER_BATCH,
+            sampler=RandomSampler(dataset.train, cfg.TRAIN.DATALOADER.CATEGORIES_PER_BATCH,
+                                  cfg.TRAIN.DATALOADER.INSTANCES_PER_CATEGORY_IN_BATCH, dataset.num_categories,
+                                  is_train=True),
+            # sampler=RandomIdentitySampler_alignedreid(dataset.train, cfg.DATALOADER.NUM_INSTANCE),      # new add by gu
+            num_workers=num_workers, collate_fn=train_collate_fn_classifaction
         )
     else:
         train_loader = DataLoader(
@@ -101,4 +116,4 @@ def make_data_loader_classification(cfg):
     #notes:
     #1.collate_fn是自定义函数，对提取的batch做处理，例如分开image和label
 
-    return train_loader, val_loader, test_loader, num_classes
+    return train_loader, val_loader, test_loader, classes_list

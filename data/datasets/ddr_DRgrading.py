@@ -40,9 +40,9 @@ class DDR_DRgrading(BaseImageDataset):
 
         self._check_before_run()
 
-        train, train_statistics, train_c2l = self._process_dir(self.train_dir, relabel=True)
-        val, val_statistics, val_c2l = self._process_dir(self.val_dir, relabel=False)
-        test, test_statistics, test_c2l = self._process_dir(self.test_dir, relabel=False)
+        train, train_statistics, train_c2l, train_l2c = self._process_dir(self.train_dir, relabel=True)
+        val, val_statistics, val_c2l, val_l2c = self._process_dir(self.val_dir, relabel=False)
+        test, test_statistics, test_c2l, test_l2c = self._process_dir(self.test_dir, relabel=False)
 
         #train = self._process_dir(self.train_dir, relabel=True)
         #query = self._process_dir(self.query_dir, relabel=False)
@@ -62,12 +62,14 @@ class DDR_DRgrading(BaseImageDataset):
         self.val = val
         self.test = test
 
-        self.category = []
-        for category_record in train_statistics:
-            self.category.append(category_record[0])
+        self.num_categories = len(train_l2c)
 
-        self.num_categories = len(self.category)
+        self.category = []
+        for index in range(self.num_categories):
+            self.category.append(train_l2c[index])
+
         self.category2label = train_c2l
+        self.label2category = train_l2c
 
         self.num_train_statistics = train_statistics
         self.num_val_statistics = val_statistics
@@ -104,7 +106,7 @@ class DDR_DRgrading(BaseImageDataset):
             img2label[img] = label
             categorySet.add(label)
             if categoryNum.get(label) == None:
-                categoryNum[label] = 0
+                categoryNum[label] = 1
             else:
                 categoryNum[label] = categoryNum[label] + 1
             img_path = osp.join(dir_path, img)
@@ -113,9 +115,11 @@ class DDR_DRgrading(BaseImageDataset):
         statistics = []
 
         category2label = {}
+        label2category = {}
         for i in range(len(categorySet)):
             if i in categorySet:
-                category2label[i] = i
+                category2label[str(i)] = i
+                label2category[i] = str(i)
                 statistics.append((i, categoryNum[i]))
             else:
                 raise Exception("Lack Category!", i)
@@ -142,4 +146,4 @@ class DDR_DRgrading(BaseImageDataset):
             if relabel: pid = pid2label[pid]
             dataset.append((img_path, pid, camid))
         """
-        return dataset, statistics, category2label
+        return dataset, statistics, category2label, label2category
